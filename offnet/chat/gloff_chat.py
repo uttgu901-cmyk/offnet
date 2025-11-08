@@ -2,255 +2,221 @@ import socket
 import threading
 import time
 import json
-import select
-from typing import Dict, List
 from rich.console import Console
 from rich.panel import Panel
-from rich.text import Text
 
 console = Console()
 
 class GloffChat:
-    """
-    GloffChat - Local mesh chat for devices in network range
-    Simple terminal-based chat
-    """
-    
-    def __init__(self, username: str = "Anonymous", port: int = 8888):
+    def __init__(self, username: str = "User", port: int = 8888):
         self.username = username
         self.port = port
-        self.socket = None
         self.running = False
         self.peers = {}
         self.message_history = []
-        self.discovery_socket = None
-        
+    
     def start(self):
-        """Start the chat server and discovery"""
+        """Запуск чата"""
         self.running = True
         
-        # Start server
-        self._start_server()
-        
-        # Start discovery
-        self._start_discovery()
-        
-        # Start listening for user input
-        self._start_input_listener()
+        # Запускаем сервер и discovery в отдельных потоках
+        threading.Thread(target=self._start_server, daemon=True).start()
+        threading.Thread(target=self._start_discovery, daemon=True).start()
+        threading.Thread(target=self._start_input, daemon=True).start()
         
         console.print(Panel.fit(
             f"[green]GloffChat Started![/green]\n"
             f"Username: [yellow]{self.username}[/yellow]\n"
             f"Port: [yellow]{self.port}[/yellow]\n"
-            f"Looking for peers in network...\n"
-            f"Type your messages and press Enter\n"
+            f"🌐 Local network only\n"
+            f"📡 Range: WiFi coverage (50-100m)\n"
+            f"Type messages and press Enter\n"
             f"Type '/quit' to exit",
-            title="🚀 GloffChat"
+            title="💬 GloffChat"
         ))
-        
+    
     def _start_server(self):
-        """Start TCP server for receiving messages"""
-        def server_thread():
-            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.socket.settimeout(1.0)
-            
-            try:
-                self.socket.bind(('0.0.0.0', self.port))
-                self.socket.listen(5)
-                
-                while self.running:
-                    try:
-                        client_socket, addr = self.socket.accept()
-                        threading.Thread(
-                            target=self._handle_client,
-                            args=(client_socket, addr),
-                            daemon=True
-                        ).start()
-                    except socket.timeout:
-                        continue
-                    except:
-                        break
-            except Exception as e:
-                console.print(f"[red]Server error: {e}[/red]")
+        """TCP сервер для приёма сообщений"""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.settimeout(1.0)
         
-        threading.Thread(target=server_thread, daemon=True).start()
+        try:
+            sock.bind(('0.0.0.0', self.port))
+            sock.listen(5)
+            
+            while self.running:
+                try:
+                    client, addr = sock.accept()
+                    threading.Thread(
+                        target=self._handle_client, 
+                        args=(client, addr), 
+                        daemon=True
+                    ).start()
+                except socket.timeout:
+                    continue
+        except Exception as e:
+            console.print(f"[red]Server error: {e}[/red]")
+        finally:
+            sock.close()
     
     def _start_discovery(self):
-        """Start peer discovery using broadcast"""
-        def discovery_thread():
-            self.discovery_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self.discovery_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-            
-            message = json.dumps({
-                'type': 'discovery',
-                'username': self.username,
-                'port': self.port,
-                'timestamp': time.time()
-            }).encode()
-            
-            while self.running:
-                try:
-                    # Broadcast to local network
-                    self.discovery_socket.sendto(message, ('255.255.255.255', 8889))
-                    
-                    # Listen for responses
-                    self.discovery_socket.settimeout(2.0)
-                    try:
-                        data, addr = self.discovery_socket.recvfrom(1024)
-                        message = json.loads(data.decode())
-                        if message.get('type') == 'discovery_response':
-                            self._add_peer(addr[0], message)
-                    except socket.timeout:
-                        pass
-                    
-                    time.sleep(5)  # Broadcast every 5 seconds
-                except Exception as e:
-                    if self.running:
-                        console.print(f"[red]Discovery error: {e}[/red]")
-                    break
+        """Поиск других пользователей в сети"""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         
-        threading.Thread(target=discovery_thread, daemon=True).start()
+        discovery_msg = json.dumps({
+            'type': 'discovery',
+            'username': self.username,
+            'port': self.port
+        }).encode()
+        
+        while self.running:
+            try:
+                # Рассылаем broadcast
+                sock.sendto(discovery_msg, ('255.255.255.255', 8889))
+                time.sleep(5)
+            except:
+                break
     
-    def _start_input_listener(self):
-        """Start listening for user input in terminal"""
-        def input_thread():
-            while self.running:
-                try:
-                    message = input()
-                    if not self.running:
-                        break
-                        
-                    if message.lower() == '/quit':
-                        self.stop()
-                        break
-                    elif message.lower() == '/peers':
-                        self._list_peers()
-                    elif message.lower().startswith('/'):
-                        console.print(f"[yellow]Unknown command: {message}[/yellow]")
-                    else:
-                        self.send_message(message)
-                except (EOFError, KeyboardInterrupt):
+    def _start_input(self):
+        """Обработка ввода пользователя"""
+        while self.running:
+            try:
+                message = input()
+                if not self.running:
+                    break
+                    
+                if message.lower() == '/quit':
                     self.stop()
                     break
-                except Exception as e:
-                    console.print(f"[red]Input error: {e}[/red]")
-        
-        threading.Thread(target=input_thread, daemon=True).start()
+                elif message.lower() == '/peers':
+                    self._show_peers()
+                elif message.lower() == '/help':
+                    self._show_help()
+                else:
+                    self.send_message(message)
+            except (EOFError, KeyboardInterrupt):
+                self.stop()
+                break
+            except Exception as e:
+                console.print(f"[red]Input error: {e}[/red]")
     
-    def _handle_client(self, client_socket, addr):
-        """Handle incoming client connection"""
+    def _handle_client(self, client, addr):
+        """Обработка входящих соединений"""
         try:
-            data = client_socket.recv(1024).decode()
+            data = client.recv(1024).decode()
             if not data:
                 return
                 
             message = json.loads(data)
             
             if message.get('type') == 'discovery':
-                # Respond to discovery
+                # Отвечаем на discovery
                 response = json.dumps({
-                    'type': 'discovery_response',
+                    'type': 'discovery_response', 
                     'username': self.username,
                     'port': self.port
                 }).encode()
-                client_socket.send(response)
+                client.send(response)
                 self._add_peer(addr[0], message)
                 
             elif message.get('type') == 'message':
                 username = message.get('username', 'Unknown')
                 text = message.get('text', '')
-                timestamp = message.get('timestamp', time.time())
                 
-                # Display message
-                self._display_message(username, text, timestamp)
+                # Показываем сообщение
+                self._display_message(username, text, is_own=False)
                 
                 self.message_history.append({
                     'username': username,
                     'text': text,
-                    'timestamp': timestamp,
+                    'timestamp': time.time(),
                     'type': 'received'
                 })
                 
         except Exception as e:
-            console.print(f"[red]Error handling client: {e}[/red]")
+            console.print(f"[red]Client error: {e}[/red]")
         finally:
-            client_socket.close()
+            client.close()
     
     def _add_peer(self, ip: str, message: dict):
-        """Add a discovered peer"""
-        username = message.get('username', 'Unknown')
-        port = message.get('port', self.port)
-        
+        """Добавляем найденного пользователя"""
         if ip not in self.peers:
             self.peers[ip] = {
-                'username': username,
-                'port': port,
-                'discovered_at': time.time()
+                'username': message.get('username', 'Unknown'),
+                'port': message.get('port', self.port)
             }
-            console.print(f"[green]➕ Discovered peer: {username} @ {ip}[/green]")
+            console.print(f"[green]➕ Found: {message.get('username')} @ {ip}[/green]")
     
-    def _display_message(self, username: str, text: str, timestamp: float):
-        """Display a message in the terminal"""
-        time_str = time.strftime('%H:%M:%S', time.localtime(timestamp))
+    def _display_message(self, username: str, text: str, is_own: bool = False):
+        """Красивый вывод сообщения"""
+        time_str = time.strftime('%H:%M:%S')
         
-        if username == self.username:
+        if is_own:
             panel = Panel.fit(
-                Text(text, style="blue"),
+                f"{text}",
                 title=f"👤 {username} [{time_str}]",
                 border_style="blue"
             )
         else:
             panel = Panel.fit(
-                Text(text, style="green"),
+                f"{text}", 
                 title=f"👥 {username} [{time_str}]",
                 border_style="green"
             )
         
         console.print(panel)
     
-    def _list_peers(self):
-        """List all discovered peers"""
+    def _show_peers(self):
+        """Показать список подключенных"""
         if not self.peers:
-            console.print("[yellow]No peers discovered yet[/yellow]")
+            console.print("[yellow]No peers found yet[/yellow]")
             return
             
-        console.print("\n[cyan]📡 Discovered Peers:[/cyan]")
+        console.print("\n[cyan]📡 Connected peers:[/cyan]")
         for ip, info in self.peers.items():
-            console.print(f"  • {info['username']} @ {ip}:{info['port']}")
+            console.print(f"  • {info['username']} @ {ip}")
+    
+    def _show_help(self):
+        """Показать справку"""
+        console.print(Panel.fit(
+            "[green]GloffChat Commands:[/green]\n"
+            "/help - Show this help\n" 
+            "/peers - Show connected users\n"
+            "/quit - Exit chat\n"
+            "Any other text - Send message",
+            title="❓ Help"
+        ))
     
     def send_message(self, text: str):
-        """Send message to all discovered peers"""
-        message = {
+        """Отправить сообщение всем"""
+        message = json.dumps({
             'type': 'message',
             'username': self.username,
             'text': text,
             'timestamp': time.time()
-        }
+        }).encode()
         
-        message_json = json.dumps(message).encode()
         sent_to = 0
         
         for peer_ip, peer_info in self.peers.items():
-            if peer_ip == '127.0.0.1':  # Don't send to self
-                continue
-                
             try:
-                peer_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                peer_socket.settimeout(2.0)
-                peer_socket.connect((peer_ip, peer_info['port']))
-                peer_socket.send(message_json)
-                peer_socket.close()
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(2.0)
+                sock.connect((peer_ip, peer_info['port']))
+                sock.send(message)
+                sock.close()
                 sent_to += 1
             except:
-                # Remove unreachable peer
+                # Удаляем недоступного
                 del self.peers[peer_ip]
         
-        # Display own message
-        self._display_message(self.username, text, time.time())
+        # Показываем своё сообщение
+        self._display_message(self.username, text, is_own=True)
         
         self.message_history.append({
-            'username': self.username,
+            'username': self.username, 
             'text': text,
             'timestamp': time.time(),
             'type': 'sent',
@@ -258,19 +224,15 @@ class GloffChat:
         })
     
     def stop(self):
-        """Stop the chat"""
+        """Остановка чата"""
         self.running = False
-        if self.socket:
-            self.socket.close()
-        if self.discovery_socket:
-            self.discovery_socket.close()
-        console.print("[red]GloffChat stopped[/red]")
+        console.print("[red]Chat stopped[/red]")
 
 def main():
-    """CLI entry point for gloff-chat"""
+    """CLI команда для запуска чата"""
     import argparse
     
-    parser = argparse.ArgumentParser(description='GloffChat - Local mesh chat')
+    parser = argparse.ArgumentParser(description='GloffChat - Local network chat')
     parser.add_argument('--username', '-u', required=True, help='Your username')
     parser.add_argument('--port', '-p', type=int, default=8888, help='Port to use')
     
@@ -280,7 +242,7 @@ def main():
     
     try:
         chat.start()
-        # Keep main thread alive
+        # Держим основной поток alive
         while chat.running:
             time.sleep(1)
     except KeyboardInterrupt:
