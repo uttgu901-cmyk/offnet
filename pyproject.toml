@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "offnet"
+dynamic = ["version"]
+description = "Offline-first Python library with local web content and mesh chat"
+authors = [
+    {name = "OffNet Team", email = "contact@offnet.com"},
+]
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "requests>=2.25.1",
+    "beautifulsoup4>=4.9.3",
+    "lxml>=4.6.3",
+    "zeroconf>=0.28.0",
+    "python-socketio>=5.0.0",
+    "rich>=10.0.0",
+    "click>=8.0.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "black", "flake8"]
+
+[project.scripts]
+gloff-chat = "offnet.chat.gloff_chat:main"
+offnet-update = "offnet.core:update_all_content"
+
+[tool.setuptools_scm]
