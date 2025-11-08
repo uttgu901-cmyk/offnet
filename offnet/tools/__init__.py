@@ -1,6 +1,11 @@
-from .calculator import Calculator
-from .translator import Translator
-from .weather import Weather
-from .notes import Notes
+import math
 
-__all__ = ['Calculator', 'Translator', 'Weather', 'Notes']
+class Calculator:
+    def calculate(self, expression: str):
+        try:
+            # Безопасное вычисление
+            allowed = {'sin': math.sin, 'cos': math.cos, 'tan': math.tan,
+                      'sqrt': math.sqrt, 'log': math.log10, 'pi': math.pi, 'e': math.e}
+            return eval(expression, {"__builtins__": {}}, allowed)
+        except:
+            raise ValueError("Invalid expression")
