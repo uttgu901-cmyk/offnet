@@ -1,4 +1,17 @@
 from setuptools import setup, find_packages
+import subprocess
+import sys
+
+# ЗАПУСКАЕМ ПАРСЕР ПРИ УСТАНОВКЕ
+def download_initial_content():
+    try:
+        print("📥 Downloading initial content...")
+        subprocess.check_call([sys.executable, "scripts/mass_parser.py"])
+    except:
+        print("⚠️  Could not download content. Run manually: python scripts/mass_parser.py")
+
+# Вызываем при установке
+download_initial_content()
 
 setup(
     name="offnet",
