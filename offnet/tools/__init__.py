@@ -1,11 +1,18 @@
-import math
+from offnet.chat.gloff_chat import GloffChat
 
-class Calculator:
-    def calculate(self, expression: str):
-        try:
-            # Безопасное вычисление
-            allowed = {'sin': math.sin, 'cos': math.cos, 'tan': math.tan,
-                      'sqrt': math.sqrt, 'log': math.log10, 'pi': math.pi, 'e': math.e}
-            return eval(expression, {"__builtins__": {}}, allowed)
-        except:
-            raise ValueError("Invalid expression")
+def chat(username="User"):
+    return GloffChat(username)
+
+def cite(site_name):
+    class SiteHandler:
+        def search(self, query):
+            return [{"title": "Demo", "summary": "Test content"}]
+    return SiteHandler()
+
+def tool(tool_name):
+    class Calculator:
+        def calculate(self, expr):
+            return eval(expr)
+    return Calculator()
+
+__all__ = ['chat', 'cite', 'tool', 'GloffChat']
