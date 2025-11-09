@@ -28,11 +28,11 @@ class GloffChat:
             f"[green]GloffChat Started![/green]\n"
             f"Username: [yellow]{self.username}[/yellow]\n"
             f"Port: [yellow]{self.port}[/yellow]\n"
-            f"🌐 Local network only\n"
-            f"📡 Range: WiFi coverage (50-100m)\n"
+            f"Local network only\n"
+            f" Range: WiFi coverage (50-100m)\n"
             f"Type messages and press Enter\n"
             f"Type '/quit' to exit",
-            title="💬 GloffChat"
+            title=" GloffChat"
         ))
     
     def _start_server(self):
@@ -147,7 +147,7 @@ class GloffChat:
                 'username': message.get('username', 'Unknown'),
                 'port': message.get('port', self.port)
             }
-            console.print(f"[green]➕ Found: {message.get('username')} @ {ip}[/green]")
+            console.print(f"[green] Found: {message.get('username')} @ {ip}[/green]")
     
     def _display_message(self, username: str, text: str, is_own: bool = False):
         """Красивый вывод сообщения"""
@@ -156,13 +156,13 @@ class GloffChat:
         if is_own:
             panel = Panel.fit(
                 f"{text}",
-                title=f"👤 {username} [{time_str}]",
+                title=f" {username} [{time_str}]",
                 border_style="blue"
             )
         else:
             panel = Panel.fit(
                 f"{text}", 
-                title=f"👥 {username} [{time_str}]",
+                title=f" {username} [{time_str}]",
                 border_style="green"
             )
         
@@ -186,7 +186,7 @@ class GloffChat:
             "/peers - Show connected users\n"
             "/quit - Exit chat\n"
             "Any other text - Send message",
-            title="❓ Help"
+            title=" Help"
         ))
     
     def send_message(self, text: str):
